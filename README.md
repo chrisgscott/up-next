@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Calendar Dashboard Setup
 
-## Getting Started
+A simple NextJS dashboard for displaying your Google Calendar on a wall-mounted display.
 
-First, run the development server:
+## Features
+
+- Large, readable display perfect for wall mounting
+- Shows current time with seconds
+- Displays time until next event
+- Lists all events for the day
+- Auto-refreshes every minute
+- Clean dark theme for visibility
+
+## Setup Instructions
+
+### 1. Get Google Calendar API Key
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable the Google Calendar API:
+   - Go to "APIs & Services" > "Library"
+   - Search for "Google Calendar API"
+   - Click "Enable"
+4. Create an API Key:
+   - Go to "APIs & Services" > "Credentials"
+   - Click "Create Credentials" > "API Key"
+   - Copy your API Key
+   - **Important**: Restrict the API key to only be used for the Calendar API
+
+### 2. Share Your Calendar
+
+Since we're using an API key (not OAuth), you need to make your calendar accessible:
+
+**Option A - Public Calendar (Easiest):**
+1. Go to [Google Calendar Settings](https://calendar.google.com/calendar/settings)
+2. Find your calendar in the left sidebar
+3. Click on it and scroll to "Access permissions"
+4. Check "Make available to public"
+5. Set permission to "See only free/busy (hide details)" or "See all event details"
+
+**Option B - Share with Specific Email:**
+1. Create a Google Service Account if you want more security
+2. Share your calendar with the service account email
+
+### 3. Configure Environment Variables
+
+1. Open `.env.local` in the project root
+2. Replace the placeholder with your API key:
+
+```env
+GOOGLE_API_KEY=your_actual_google_api_key
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+### 4. Run the Application
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open your browser to `http://localhost:3000`
+6. The dashboard will automatically load your calendar - no login required!
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Running on a Mac Mini
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+For continuous display on a wall-mounted Mac Mini:
 
-## Learn More
+1. Install Node.js if not already installed
+2. Clone or copy this project to the Mac Mini
+3. Set up environment variables as above
+4. Start the application:
+   ```bash
+   npm run dev
+   ```
+5. Open the dashboard in full screen:
+   - Open Safari/Chrome to `http://localhost:3000`
+   - Press F11 or use View > Enter Full Screen
+6. Optional: Create a simple script to auto-start on boot
 
-To learn more about Next.js, take a look at the following resources:
+## Customization
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Edit `src/app/page.tsx` to adjust colors, fonts, or layout
+- Modify refresh rate in `src/hooks/useCalendar.ts` (currently 60 seconds)
+- Add more calendar features by extending the Google Calendar API calls
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Troubleshooting
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **"API key not configured" error**: Make sure you've added your API key to `.env.local`
+- **"Calendar access denied" error**: Your calendar needs to be publicly accessible or shared with a service account
+- **No events showing**: Check that your calendar sharing permissions allow event details to be visible
+- **"Calendar not found" error**: The calendar ID might need to be changed from 'primary' to your email address
