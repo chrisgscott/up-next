@@ -236,6 +236,19 @@ body::after {
   opacity: 0.4;
 }
 
+/* Task checklist items */
+.task-item {
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.task-item:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
+}
+
 /* Button styles */
 .btn {
   font-family: var(--font-body);

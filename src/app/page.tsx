@@ -1,72 +1,17 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { useCalendar } from '@/hooks/useCalendar';
 import { useCurrentTime, getTimeUntilEvent } from '@/hooks/useTime';
 import { useCalendarSelection } from '@/hooks/useCalendarSelection';
 import { SettingsModal } from '@/components/SettingsModal';
-import { Calendar } from '@/lib/calendars';
+import { TodoistChecklist } from '@/components/TodoistChecklist';
+import { getAvailableCalendars, Calendar } from '@/lib/calendars';
 import { CalendarEvent } from '@/lib/calendar';
 import { Settings, LogOut, Calendar as CalendarIcon, Clock, ArrowRight } from 'lucide-react';
 
 type UrgencyLevel = 'urgent' | 'warning' | 'calm' | 'none';
-
-function ProgressRing({
-  progress,
-  size = 200,
-  strokeWidth = 6,
-  urgency
-}: {
-  progress: number;
-  size?: number;
-  strokeWidth?: number;
-  urgency: UrgencyLevel;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (progress / 100) * circumference;
-
-  const strokeColor = {
-    urgent: '#ef4444',
-    warning: '#f59e0b',
-    calm: '#6366f1',
-    none: '#52525b'
-  }[urgency];
-
-  return (
-    <svg
-      className="progress-ring"
-      width={size}
-      height={size}
-    >
-      {/* Background ring */}
-      <circle
-        stroke="rgba(255,255,255,0.06)"
-        fill="transparent"
-        strokeWidth={strokeWidth}
-        r={radius}
-        cx={size / 2}
-        cy={size / 2}
-      />
-      {/* Progress ring */}
-      <circle
-        className="progress-ring-circle"
-        stroke={strokeColor}
-        fill="transparent"
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        r={radius}
-        cx={size / 2}
-        cy={size / 2}
-        style={{
-          strokeDasharray: `${circumference} ${circumference}`,
-          strokeDashoffset: offset,
-        }}
-      />
-    </svg>
-  );
-}
 
 export default function Home() {
   const { accessToken, isLoading, signIn, signOut } = useGoogleAuth();
@@ -83,6 +28,41 @@ export default function Home() {
     });
     setCalendarNames(names);
   }, []);
+
+  // Eagerly load calendar names so we can identify Todoist calendars on first render
+  useEffect(() => {
+    if (accessToken) {
+      getAvailableCalendars(accessToken).then(calendars => {
+        const names: Record<string, string> = {};
+        calendars.forEach(cal => { names[cal.id] = cal.summary; });
+        setCalendarNames(names);
+      });
+    }
+  }, [accessToken]);
+
+  // Identify Todoist calendar IDs by name
+  const todoistCalendarIds = useMemo(() => {
+    return new Set(
+      Object.entries(calendarNames)
+        .filter(([, name]) => name.toLowerCase().includes('todoist'))
+        .map(([id]) => id)
+    );
+  }, [calendarNames]);
+
+  // Split events: Todoist all-day events go to checklist, everything else stays in schedule
+  const todoistTasks = useMemo(() => {
+    return events.filter(event =>
+      !event.start.dateTime &&
+      event.calendarId &&
+      todoistCalendarIds.has(event.calendarId)
+    );
+  }, [events, todoistCalendarIds]);
+
+  const scheduleEvents = useMemo(() => {
+    return events.filter(event =>
+      !(!event.start.dateTime && event.calendarId && todoistCalendarIds.has(event.calendarId))
+    );
+  }, [events, todoistCalendarIds]);
 
   const isEventPast = (event: CalendarEvent) => {
     if (!event.end.dateTime) return false;
@@ -173,7 +153,7 @@ export default function Home() {
 
   return (
     <div className={`min-h-screen px-6 py-8 md:px-12 md:py-12 transition-all duration-1000 ${urgencyBgColors[urgency]}`}>
-      <div className="max-w-5xl mx-auto">
+      <div className={`${todoistTasks.length > 0 ? '' : 'max-w-5xl'} mx-auto`}>
 
         {/* Monumental Clock */}
         <section className="text-center mb-20 pt-8 animate-fade-in-up" style={{ opacity: 0 }}>
@@ -197,31 +177,36 @@ export default function Home() {
         {/* Next Event Hero */}
         <section className="mb-12 animate-fade-in-up delay-200" style={{ opacity: 0 }}>
           {nextEvent ? (
-            <div className="card p-8 md:p-10">
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                {/* Progress Ring */}
-                <div className="relative shrink-0">
-                  <ProgressRing
-                    progress={progress}
-                    size={220}
-                    strokeWidth={10}
-                    urgency={urgency}
-                  />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className={`font-display text-5xl md:text-6xl ${urgencyTextColors[urgency]} ${urgency === 'urgent' ? 'animate-countdown-pulse' : ''}`}>
-                      {getTimeUntilEvent(nextEvent.start.dateTime!)}
-                    </span>
-                    <span className="text-zinc-500 text-base uppercase tracking-wider">until</span>
-                  </div>
-                </div>
+            <div className="card relative overflow-hidden p-8 md:p-12 lg:p-16">
+              {/* Progress fill background - horizontal */}
+              <div
+                className="absolute inset-0 transition-all duration-1000 ease-out"
+                style={{
+                  background: {
+                    urgent: 'linear-gradient(to right, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1))',
+                    warning: 'linear-gradient(to right, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1))',
+                    calm: 'linear-gradient(to right, rgba(99, 102, 241, 0.25), rgba(99, 102, 241, 0.08))',
+                    none: 'transparent'
+                  }[urgency],
+                  clipPath: `inset(0 ${100 - progress}% 0 0)`,
+                }}
+              />
 
-                {/* Event Details */}
-                <div className="flex-1 text-center md:text-left">
-                  <p className="text-zinc-500 text-base uppercase tracking-wider mb-2">Next Up</p>
-                  <h2 className="font-display text-5xl md:text-7xl tracking-wide mb-4">
+              {/* Content */}
+              <div className="relative z-10 flex flex-col gap-4">
+                {/* Countdown + Event name on same line */}
+                <div className="flex items-baseline gap-4 md:gap-6 lg:gap-8 flex-wrap">
+                  <span className={`font-display text-7xl sm:text-8xl md:text-9xl lg:text-[10rem] xl:text-[12rem] leading-none ${urgencyTextColors[urgency]} ${urgency === 'urgent' ? 'animate-countdown-pulse' : ''}`}>
+                    {getTimeUntilEvent(nextEvent.start.dateTime!)}
+                  </span>
+                  <h2 className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl xl:text-9xl tracking-wide leading-none">
                     {nextEvent.summary}
                   </h2>
-                  <p className="text-zinc-400 text-2xl">
+                </div>
+
+                {/* Event time and calendar */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  <p className="text-zinc-400 text-xl md:text-2xl">
                     {new Date(nextEvent.start.dateTime!).toLocaleTimeString('en-US', {
                       hour: 'numeric',
                       minute: '2-digit',
@@ -239,7 +224,7 @@ export default function Home() {
                     )}
                   </p>
                   {nextEvent.calendarId && calendarNames[nextEvent.calendarId] && (
-                    <span className="inline-block mt-3 text-sm px-3 py-1 rounded-full bg-white/5 border border-white/10 text-zinc-400">
+                    <span className="text-base md:text-lg px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-zinc-400">
                       {calendarNames[nextEvent.calendarId]}
                     </span>
                   )}
@@ -257,101 +242,116 @@ export default function Home() {
           )}
         </section>
 
-        {/* Today's Events */}
-        <section className="animate-fade-in-up delay-300" style={{ opacity: 0 }}>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-display text-2xl tracking-wide text-zinc-400">TODAY&apos;S SCHEDULE</h3>
-            <span className="text-sm text-zinc-600">{events.length} events</span>
-          </div>
+        {/* Schedule + Tasks Grid */}
+        <div className={`animate-fade-in-up delay-300 ${
+          todoistTasks.length > 0
+            ? 'grid grid-cols-[1fr_320px] gap-8 items-start'
+            : ''
+        }`} style={{ opacity: 0 }}>
 
-          {events.length > 0 ? (
-            <div className="space-y-3">
-              {events.map((event, index) => {
-                const isPast = isEventPast(event);
-                const isNext = event.id === nextEvent?.id;
+          {/* Left Column: Today's Schedule */}
+          <section>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-display text-2xl tracking-wide text-zinc-400">TODAY&apos;S SCHEDULE</h3>
+              <span className="text-sm text-zinc-600">{scheduleEvents.length} events</span>
+            </div>
 
-                return (
-                  <div
-                    key={`${event.calendarId}-${event.id}`}
-                    className={`event-item p-4 md:p-5 animate-slide-in ${isNext ? 'is-next' : ''} ${isPast ? 'is-past' : ''}`}
-                    style={{
-                      opacity: 0,
-                      animationDelay: `${400 + index * 50}ms`
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0">
-                        {/* Time indicator */}
-                        <div className={`shrink-0 w-1.5 h-12 rounded-full ${
-                          isNext ? 'bg-indigo-500' : isPast ? 'bg-zinc-700' : 'bg-zinc-600'
-                        }`} />
+            {scheduleEvents.length > 0 ? (
+              <div className="space-y-3">
+                {scheduleEvents.map((event, index) => {
+                  const isPast = isEventPast(event);
+                  const isNext = event.id === nextEvent?.id;
 
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <h4 className={`font-medium truncate ${isPast ? 'text-zinc-600' : 'text-white'}`}>
-                              {event.summary}
-                            </h4>
-                            {isNext && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                                Next
-                              </span>
-                            )}
-                            {event.calendarId && calendarNames[event.calendarId] && (
-                              <span className={`text-xs px-2 py-0.5 rounded-md ${
-                                isPast ? 'bg-zinc-800 text-zinc-600' : 'bg-zinc-800 text-zinc-500'
-                              }`}>
-                                {calendarNames[event.calendarId]}
-                              </span>
-                            )}
+                  return (
+                    <div
+                      key={`${event.calendarId}-${event.id}`}
+                      className={`event-item p-4 md:p-5 animate-slide-in ${isNext ? 'is-next' : ''} ${isPast ? 'is-past' : ''}`}
+                      style={{
+                        opacity: 0,
+                        animationDelay: `${400 + index * 50}ms`
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          {/* Time indicator */}
+                          <div className={`shrink-0 w-1.5 h-12 rounded-full ${
+                            isNext ? 'bg-indigo-500' : isPast ? 'bg-zinc-700' : 'bg-zinc-600'
+                          }`} />
+
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <h4 className={`font-medium truncate ${isPast ? 'text-zinc-600' : 'text-white'}`}>
+                                {event.summary}
+                              </h4>
+                              {isNext && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                  Next
+                                </span>
+                              )}
+                              {event.calendarId && calendarNames[event.calendarId] && (
+                                <span className={`text-xs px-2 py-0.5 rounded-md ${
+                                  isPast ? 'bg-zinc-800 text-zinc-600' : 'bg-zinc-800 text-zinc-500'
+                                }`}>
+                                  {calendarNames[event.calendarId]}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className={`text-sm mt-1 ${isPast ? 'text-zinc-700' : 'text-zinc-500'}`}>
+                              {event.start.dateTime ? (
+                                <>
+                                  {new Date(event.start.dateTime).toLocaleTimeString('en-US', {
+                                    hour: 'numeric',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })}
+                                  {event.end.dateTime && (
+                                    <>
+                                      {' — '}
+                                      {new Date(event.end.dateTime).toLocaleTimeString('en-US', {
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true
+                                      })}
+                                    </>
+                                  )}
+                                </>
+                              ) : (
+                                'All day'
+                              )}
+                            </p>
                           </div>
-
-                          <p className={`text-sm mt-1 ${isPast ? 'text-zinc-700' : 'text-zinc-500'}`}>
-                            {event.start.dateTime ? (
-                              <>
-                                {new Date(event.start.dateTime).toLocaleTimeString('en-US', {
-                                  hour: 'numeric',
-                                  minute: '2-digit',
-                                  hour12: true
-                                })}
-                                {event.end.dateTime && (
-                                  <>
-                                    {' — '}
-                                    {new Date(event.end.dateTime).toLocaleTimeString('en-US', {
-                                      hour: 'numeric',
-                                      minute: '2-digit',
-                                      hour12: true
-                                    })}
-                                  </>
-                                )}
-                              </>
-                            ) : (
-                              'All day'
-                            )}
-                          </p>
                         </div>
+
+                        {/* Countdown for upcoming events */}
+                        {event.start.dateTime && !isPast && (
+                          <div className="text-right shrink-0">
+                            <span className={`font-display text-2xl ${
+                              isNext ? urgencyTextColors[urgency] : 'text-zinc-500'
+                            }`}>
+                              {getTimeUntilEvent(event.start.dateTime)}
+                            </span>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Countdown for upcoming events */}
-                      {event.start.dateTime && !isPast && (
-                        <div className="text-right shrink-0">
-                          <span className={`font-display text-2xl ${
-                            isNext ? urgencyTextColors[urgency] : 'text-zinc-500'
-                          }`}>
-                            {getTimeUntilEvent(event.start.dateTime)}
-                          </span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="card p-8 text-center">
-              <p className="text-zinc-500">No events scheduled for today</p>
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="card p-8 text-center">
+                <p className="text-zinc-500">No events scheduled for today</p>
+              </div>
+            )}
+          </section>
+
+          {/* Right Column: Todoist Tasks */}
+          {todoistTasks.length > 0 && (
+            <aside>
+              <TodoistChecklist tasks={todoistTasks} />
+            </aside>
           )}
-        </section>
+        </div>
 
         {/* Footer controls */}
         <footer className="flex justify-center gap-2 pt-8 pb-4 mt-8 border-t border-white/5 animate-fade-in-up delay-500" style={{ opacity: 0 }}>
